@@ -1,0 +1,75 @@
+stages:
+  - build
+  - deploy
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - node_modules/
+    - .next/cache/
+
+build:
+  stage: build
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master"'
+      when: on_success
+  tags:
+    - admin
+  script:
+    - echo "Building admin"
+    - echo "NEXT_PUBLIC_API_HOST='$GL_NEXT_PUBLIC_API_HOST'" > .env.local
+    - echo "NEXT_PUBLIC_FILE_HOST='$GL_NEXT_PUBLIC_API_HOST'" >> .env.local
+    - npm install --legacy-peer-deps
+    - npm run build
+  artifacts:
+    paths:
+      - .env.local
+      - .next
+
+deploy:
+  stage: deploy
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master"'
+      when: on_success
+  tags:
+    - admin
+  dependencies:
+    - build
+  script:
+    - echo "Deploying admin"
+    - rsync -a --exclude='.git' ./ /var/www/admin
+    - cd /var/www/admin
+    - bash ./update/update.sh
+
+testBuild:
+  stage: build
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"'
+      when: on_success
+  tags:
+    - admin
+  script:
+    - echo "Building admin"
+    - echo "NEXT_PUBLIC_API_HOST='$GL_NEXT_PUBLIC_TEST_API_HOST'" > .env.local
+    - echo "NEXT_PUBLIC_FILE_HOST='$GL_NEXT_PUBLIC_TEST_API_HOST'" >> .env.local
+    - npm install --legacy-peer-deps
+    - npm run build
+  artifacts:
+    paths:
+      - .env.local
+      - .next
+
+deployToTesting:
+  stage: deploy
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "dev"'
+      when: on_success
+  tags:
+    - admin
+  dependencies:
+    - testBuild
+  script:
+    - echo "Deploying admin"
+    - rsync -a --exclude='.git' ./ /var/www/admin-test
+    - cd /var/www/admin-test
+    - bash ./update/update.sh
